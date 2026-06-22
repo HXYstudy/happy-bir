@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎂 3D粒子生日蛋糕 - 手势控制</title>
+<style>
+  :root{--bg:#05040c;--text:#ffe8c8;--panel:rgba(12,8,4,.84);--accent:#f0a040;--border:rgba(240,160,64,.2)}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);overflow:hidden;font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;user-select:none;-webkit-user-select:none;cursor:default}
+  #c{position:fixed;inset:0;z-index:1}canvas{display:block}
+  #loader{position:fixed;inset:0;z-index:100;background:radial-gradient(ellipse at center,#0e061a 0%,#05040c 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity .5s,visibility .5s}
+  #loader.done{opacity:0;visibility:hidden;pointer-events:none}
+  #loader .r{width:48px;height:48px;border:2.5px solid rgba(240,160,64,.14);border-top-color:#f0a040;border-radius:50%;animation:sp .82s linear infinite;margin-bottom:15px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  #loader .t{color:var(--text);font-size:14px;letter-spacing:2px;opacity:.85}
+  #loader .s{color:rgba(255,232,200,.38);font-size:10px;margin-top:4px}
+  .ui{position:fixed;top:16px;right:16px;z-index:10;display:flex;flex-direction:column;gap:9px;pointer-events:none}.ui>*{pointer-events:auto}
+  .card{background:var(--panel);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid var(--border);border-radius:14px;padding:13px 16px;color:var(--text);min-width:185px;transition:border .4s}
+  .card:hover{border-color:rgba(240,160,64,.45)}
+  .tag{display:inline-block;padding:3px 12px;border-radius:18px;font-size:11px;font-weight:600;letter-spacing:1px;transition:.5s}
+  .t-closed{background:rgba(240,160,64,.18);color:#f0c060}.t-scatter{background:rgba(232,112,96,.18);color:#f09080}.t-zoom{background:rgba(200,120,220,.18);color:#d0a0f0}
+  .g-icon{font-size:26px;text-align:center;transition:.3s}
+  .g-label{font-size:11px;text-align:center;color:rgba(255,232,200,.5);letter-spacing:1px}
+  .g-cam{font-size:10px;text-align:center;color:rgba(255,232,200,.3);margin-top:2px}
+  .btn{display:inline-flex;align-items:center;gap:5px;padding:8px 15px;border:1px solid var(--border);border-radius:20px;background:rgba(240,160,64,.07);color:var(--text);font-size:11px;cursor:pointer;transition:.3s;letter-spacing:1px;font-family:inherit;white-space:nowrap}
+  .btn:hover{background:rgba(240,160,64,.2);border-color:rgba(240,160,64,.6);box-shadow:0 0 16px rgba(240,160,64,.12)}
+  .btn-row{display:flex;gap:6px;flex-wrap:wrap}
+  .hi{display:none}
+  #hints{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .hint{display:flex;align-items:center;gap:4px;background:rgba(12,8,4,.55);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.06);border-radius:16px;padding:4px 11px;font-size:10px;color:rgba(255,232,200,.5)}
+  .hint .ic{font-size:15px}
+  input[type=range]{width:100%;margin-top:6px;accent-color:#f0a040}
+  .m-bars{display:none;gap:2px;align-items:flex-end;height:14px;margin-top:5px}
+  .m-bars span{width:3px;background:var(--accent);border-radius:2px;animation:mbar .7s ease-in-out infinite alternate}
+  .m-bars span:nth-child(1){animation-delay:0s;height:60%}.m-bars span:nth-child(2){animation-delay:.1s;height:100%}.m-bars span:nth-child(3){animation-delay:.2s;height:40%}.m-bars span:nth-child(4){animation-delay:.3s;height:80%}.m-bars span:nth-child(5){animation-delay:.4s;height:50%}
+  @keyframes mbar{0%{height:25%}100%{height:100%}}
+  @media(max-width:768px){.ui{top:8px;right:8px;gap:6px}.card{padding:10px 12px;min-width:140px;border-radius:11px}.btn{padding:7px 12px;font-size:10px}#hints{bottom:10px;gap:5px}.hint{padding:3px 9px;font-size:9px}}
+</style>
+</head>
+<body>
+
+<div id="loader"><div class="r"></div><div class="t">🎂 粒子蛋糕就绪</div><div class="s" id="lsub"></div></div>
+<div id="c"></div>
+<video id="cam" autoplay playsinline style="display:none"></video>
+<input type="file" id="p-in" class="hi" accept="image/*" multiple>
+<input type="file" id="m-in" class="hi" accept="audio/*">
+
+<div class="ui">
+  <div class="card" style="text-align:center">
+    <div class="g-icon" id="gi">🖐</div>
+    <div class="g-label" id="gt">等待手势…</div>
+    <div class="g-cam" id="gc"></div>
+    <div style="margin-top:6px"><span class="tag t-closed" id="sb">🎂 合拢态</span></div>
+  </div>
+  <div class="card">
+    <div style="font-size:10px;color:rgba(255,232,200,.4);margin-bottom:4px">📸 照片</div>
+    <div class="btn-row">
+      <button class="btn" id="b-pu">📷 上传</button>
+      <button class="btn" id="b-pc">🗑 清除</button>
+    </div>
+    <div style="font-size:9px;color:rgba(255,232,200,.3);margin-top:3px" id="pn">已上传: 8 张</div>
+  </div>
+  <div class="card">
+    <div style="font-size:10px;color:rgba(255,232,200,.4);margin-bottom:4px">🎵 音乐</div>
+    <div class="btn-row">
+      <button class="btn" id="b-mt">▶ 播放</button>
+      <button class="btn" id="b-mu">📁 上传</button>
+    </div>
+    <div class="m-bars" id="mb"><span></span><span></span><span></span><span></span><span></span></div>
+    <input type="range" id="vol" min="0" max="100" value="35">
+  </div>
+</div>
+
+<div id="hints">
+  <div class="hint"><span class="ic">✊</span>握拳→合拢</div>
+  <div class="hint"><span class="ic">🖐</span>五指→散开</div>
+  <div class="hint"><span class="ic">🤏</span>捏合→放大照片</div>
+  <div class="hint"><span class="ic">🔄</span>旋转手→转视角</div>
+  <div class="hint"><span class="ic">⌨</span>1/2/3切换 M音乐</div>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const PI2=Math.PI*2, HPI=Math.PI/2;
+const STATE={CLOSED:'closed',SCATTER:'scatter',ZOOM:'zoom'};
+
+// === DOM ===
+const container=document.getElementById('c');
+const loader=document.getElementById('loader'),lsub=document.getElementById('lsub');
+const videoEl=document.getElementById('cam');
+const gi=document.getElementById('gi'),gt=document.getElementById('gt'),gc=document.getElementById('gc'),sb=document.getElementById('sb');
+const pn=document.getElementById('pn'),mb=document.getElementById('mb'),volS=document.getElementById('vol');
+
+// === Three.js ===
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.2;
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+container.appendChild(renderer.domElement);
+
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x05040c);scene.fog=new THREE.FogExp2(0x05040c,0.00008);
+const camera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,0.3,50);camera.position.set(5,3.8,8.5);
+
+const composer=new EffectComposer(renderer);composer.addPass(new RenderPass(scene,camera));
+const bloom=new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight),1.05,0.4,0.72);composer.addPass(bloom);
+
+// === 灯光 ===
+scene.add(new THREE.AmbientLight(0x2a1a30,2.2));
+const lKey=new THREE.PointLight(0xffc080,55,18,1.5);lKey.position.set(3,5.5,4);scene.add(lKey);
+const lFill=new THREE.PointLight(0xff8866,22,14,2);lFill.position.set(-4,3,-3);scene.add(lFill);
+const lRim=new THREE.PointLight(0xff6040,14,10,2.5);lRim.position.set(0,1,3.5);scene.add(lRim);
+const lTop=new THREE.PointLight(0xffd8a0,18,9,2);lTop.position.set(0,8.5,0);scene.add(lTop);
+
+// === 星空 ===
+const starsG=new THREE.BufferGeometry();const starsN=400;const starsP=new Float32Array(starsN*3);
+for(let i=0;i<starsN;i++){starsP[i*3]=(Math.random()-.5)*20;starsP[i*3+1]=Math.random()*12-1.5;starsP[i*3+2]=(Math.random()-.5)*20}
+starsG.setAttribute('position',new THREE.BufferAttribute(starsP,3));
+const stars=new THREE.Points(starsG,new THREE.PointsMaterial({color:0xffd8a0,size:.02,blending:THREE.AdditiveBlending,depthWrite:false,opacity:.55,transparent:true}));scene.add(stars);
+
+// ==================== 粒子数据生成 ====================
+function hslCol(h,s,l){const c=new THREE.Color();c.setHSL(h,s,l);return{r:c.r,g:c.g,b:c.b}}
+
+// 圆柱表面粒子(侧壁+顶盖+底盖)
+function cylSurf(r,h,yC,n,hMin,hMax,sMin,sMax,lMin,lMax,type=0){
+  const pts=[];
+  for(let i=0;i<n;i++){
+    let x,y,z;const rand=Math.random();
+    if(rand<.68){ // 侧壁
+      const a=Math.random()*PI2;const rr=r+(Math.random()-.5)*.04;
+      x=Math.cos(a)*rr;z=Math.sin(a)*rr;y=yC+(Math.random()-.5)*h;
+    }else if(rand<.84){ // 顶盖
+      const a=Math.random()*PI2;const rr=Math.sqrt(Math.random())*r*.97;
+      x=Math.cos(a)*rr;z=Math.sin(a)*rr;y=yC+h/2+(Math.random()-.5)*.02;
+    }else{ // 底盖
+      const a=Math.random()*PI2;const rr=Math.sqrt(Math.random())*r*.97;
+      x=Math.cos(a)*rr;z=Math.sin(a)*rr;y=yC-h/2+(Math.random()-.5)*.02;
+    }
+    const hue=hMin+Math.random()*(hMax-hMin);
+    const sat=sMin+Math.random()*(sMax-sMin);
+    const lit=lMin+Math.random()*(lMax-lMin);
+    const c=hslCol(hue,sat,lit);
+    pts.push({x,y,z,r:c.r,g:c.g,b:c.b,s:.06+Math.random()*.05,type,phase:Math.random()*PI2,spd:.3+Math.random()*1.3,amp:.02+Math.random()*.15});
+  }
+  return pts;
+}
+
+// 圆环粒子(奶油花边)
+function torusRing(R,rt,y,n,hMin,hMax,sMin,sMax,lMin,lMax,type=3){
+  const pts=[];
+  for(let i=0;i<n;i++){
+    const theta=Math.random()*PI2,phi=Math.random()*PI2;
+    const rr=R+Math.cos(phi)*rt;
+    const x=Math.cos(theta)*rr,z=Math.sin(theta)*rr,yy=y+Math.sin(phi)*rt;
+    const c=hslCol(hMin+Math.random()*(hMax-hMin),sMin+Math.random()*(sMax-sMin),lMin+Math.random()*(lMax-lMin));
+    pts.push({x,y:yy,z,r:c.r,g:c.g,b:c.b,s:.03+Math.random()*.04,type,phase:Math.random()*PI2,spd:.3+Math.random()*1.2,amp:.02+Math.random()*.1});
+  }
+  return pts;
+}
+
+// 蜡烛粒子
+function candlePts(cx,cz,yBase,n){
+  const pts=[];
+  for(let i=0;i<n;i++){
+    const a=Math.random()*PI2,rr=Math.random()*.055;
+    const x=cx+Math.cos(a)*rr,z=cz+Math.sin(a)*rr,y=yBase+Math.random()*.8;
+    const c=hslCol(.1+Math.random()*.04,.05+Math.random()*.12,.78+Math.random()*.18);
+    pts.push({x,y,z,r:c.r,g:c.g,b:c.b,s:.025+Math.random()*.03,type:4,phase:Math.random()*PI2,spd:.3+Math.random()*1,amp:.01+Math.random()*.05});
+  }
+  return pts;
+}
+
+// 火焰粒子(泪滴形，红→橙→黄)
+function flamePts(cx,cz,yBase,n,fi){
+  const pts=[];
+  for(let i=0;i<n;i++){
+    const hF=Math.random(),maxR=.06*(1-hF)*(1+.28*Math.sin(hF*Math.PI));
+    const a=Math.random()*PI2,rr=maxR*Math.sqrt(Math.random());
+    const x=cx+Math.cos(a)*rr,z=cz+Math.sin(a)*rr,y=yBase+hF*.42;
+    const hue=.14-hF*.11,sat=.75+Math.random()*.25,lit=.42+(1-hF)*.5;
+    const c=hslCol(hue,sat,lit);
+    pts.push({x,y,z,r:c.r,g:c.g,b:c.b,s:.028+Math.random()*.045,type:1,baseX:cx,baseZ:cz,baseY:yBase,hF,phase:Math.random()*PI2,spd:7+Math.random()*13});
+  }
+  return pts;
+}
+
+// 金色漂浮粒子
+function sparkPts(n){
+  const pts=[];
+  for(let i=0;i<n;i++){
+    const theta=Math.random()*PI2,phi=Math.acos(2*Math.random()-1),rr=1.8+Math.random()*4.5;
+    const x=Math.cos(theta)*Math.sin(phi)*rr,y=Math.sin(phi)*rr+2.8,z=Math.sin(theta)*Math.sin(phi)*rr;
+    const c=hslCol(.1+Math.random()*.08,.7+Math.random()*.3,.5+Math.random()*.45);
+    pts.push({x,y,z,r:c.r,g:c.g,b:c.b,s:.01+Math.random()*.035,type:2,phase:Math.random()*PI2,spd:.4+Math.random()*1.4,amp:.04+Math.random()*.25});
+  }
+  return pts;
+}
+
+// === 构建所有粒子 ===
+let allP=[];
+// 底层:金黄，半径2.0 高1.2 中心Y=1.15
+allP.push(...cylSurf(2.0,1.2,1.15,2800,.10,.15,.7,.95,.35,.7,0));
+// 中层:暖橙，半径1.55 高1.0 中心Y=2.15
+allP.push(...cylSurf(1.55,1.0,2.15,2000,.07,.12,.7,.9,.38,.68,0));
+// 顶层:粉，半径1.02 高.85 中心Y=3.02
+allP.push(...cylSurf(1.02,.85,3.02,1400,.94,.04,.55,.8,.42,.7,0));
+
+// 奶油花边(底层上沿+中层上沿+顶层下沿共4条)
+allP.push(...torusRing(2.06,.08,1.75,250,.10,.14,.08,.25,.78,.94));
+allP.push(...torusRing(2.06,.07,.55,200,.10,.14,.08,.25,.78,.94));
+allP.push(...torusRing(1.60,.07,2.65,200,.10,.13,.08,.25,.80,.94));
+allP.push(...torusRing(1.60,.06,1.65,180,.10,.13,.08,.25,.80,.94));
+allP.push(...torusRing(1.07,.06,3.45,160,.05,.10,.15,.35,.80,.94));
+
+// 顶部金球装饰
+for(let i=0;i<180;i++){
+  const phi=Math.acos(2*Math.random()-1),theta=Math.random()*PI2,rr=.2*Math.sqrt(Math.random());
+  const x=Math.cos(theta)*Math.sin(phi)*rr,y=3.52+Math.sin(phi)*rr,z=Math.sin(theta)*Math.sin(phi)*rr;
+  const c=hslCol(.12,.9,.5+Math.random()*.4);
+  allP.push({x,y,z,r:c.r,g:c.g,b:c.b,s:.02+Math.random()*.03,type:5,phase:Math.random()*PI2,spd:.3+Math.random()*1,amp:.01+Math.random()*.06});
+}
+
+// 蜡烛(7根，顶层上方)
+const NC=7;const candleMeta=[];
+for(let i=0;i<NC;i++){
+  const a=i/NC*PI2+.22,cr=.62,cx=Math.cos(a)*cr,cz=Math.sin(a)*cr,by=3.42;
+  allP.push(...candlePts(cx,cz,by,65));
+  candleMeta.push({cx,cz,baseY:by});
+}
+
+// 火焰
+const flameRefs=[];
+for(let i=0;i<NC;i++){
+  const m=candleMeta[i];
+  const fp=flamePts(m.cx,m.cz,m.baseY+.44,85,i);
+  flameRefs.push(fp);
+  allP.push(...fp);
+}
+
+// 金色环境粒子
+allP.push(...sparkPts(1000));
+
+const TOTAL=allP.length;
+
+// === 散开态位置 ===
+const scatPos=[];
+for(let i=0;i<TOTAL;i++){
+  const d=allP[i];
+  // 散开位置：大球形体积
+  const theta=Math.random()*PI2,phi=Math.acos(2*Math.random()-1),rr=2.5+Math.random()*7.5;
+  scatPos.push({
+    x:Math.cos(theta)*Math.sin(phi)*rr,
+    y:Math.sin(phi)*rr+3.0,
+    z:Math.sin(theta)*Math.sin(phi)*rr
+  });
+}
+
+// === 分离火焰索引用于独立动画 ===
+const flameIdxMap=new Map(); // origIdx -> flamePts index
+const flameDataAll=[];
+allP.forEach((d,i)=>{if(d.type===1){flameIdxMap.set(i,flameDataAll.length);flameDataAll.push({...d,origIdx:i})}});
+
+// ==================== 蛋糕粒子系统(正常混合) ====================
+const cakeGeo=new THREE.BufferGeometry();
+const cPosArr=new Float32Array(TOTAL*3),sPosArr=new Float32Array(TOTAL*3);
+const colArr=new Float32Array(TOTAL*3),sizArr=new Float32Array(TOTAL),typArr=new Float32Array(TOTAL);
+
+for(let i=0;i<TOTAL;i++){
+  const d=allP[i];
+  cPosArr[i*3]=d.x;cPosArr[i*3+1]=d.y;cPosArr[i*3+2]=d.z;
+  const s=scatPos[i];sPosArr[i*3]=s.x;sPosArr[i*3+1]=s.y;sPosArr[i*3+2]=s.z;
+  colArr[i*3]=d.r;colArr[i*3+1]=d.g;colArr[i*3+2]=d.b;
+  sizArr[i]=d.s;typArr[i]=d.type;
+}
+cakeGeo.setAttribute('aClosed',new THREE.BufferAttribute(cPosArr,3));
+cakeGeo.setAttribute('aScattered',new THREE.BufferAttribute(sPosArr,3));
+cakeGeo.setAttribute('color',new THREE.BufferAttribute(colArr,3));
+cakeGeo.setAttribute('aSize',new THREE.BufferAttribute(sizArr,1));
+cakeGeo.setAttribute('aType',new THREE.BufferAttribute(typArr,1));
+
+// 蛋糕着色器：正常混合 + 软圆粒子
+const cakeMat=new THREE.ShaderMaterial({
+  uniforms:{uTransition:{value:0},uTime:{value:0}},
+  vertexShader:`attribute vec3 aClosed;attribute vec3 aScattered;attribute float aSize;attribute float aType;
+varying vec3 vC;varying float vA;varying float vT;uniform float uTransition;uniform float uTime;
+float ease(float t){return t<0.5?4.0*t*t*t:1.0-pow(-2.0*t+2.0,3.0)/2.0;}
+void main(){
+  float t=ease(uTransition);
+  vec3 p=mix(aClosed,aScattered,t);
+  // 散开态漂浮
+  float fl=t*0.1;
+  p.x+=sin(uTime*1.6+p.y*2.8+aType*3.5)*fl;
+  p.y+=cos(uTime*1.2+p.x*2.2+aType*3.0)*fl;
+  p.z+=sin(uTime*1.4+p.z*2.5+aType*3.2)*fl;
+  // 合拢态微振
+  float vb=(1.0-t)*0.012;
+  p.x+=sin(uTime*7.0+p.y*10.0)*vb;
+  p.y+=cos(uTime*6.5+p.x*9.0)*vb;
+  vec4 mv=modelViewMatrix*vec4(p,1.0);
+  gl_PointSize=aSize*(340.0/-mv.z);gl_PointSize=clamp(gl_PointSize,0.3,9.0);
+  gl_Position=projectionMatrix*mv;vC=color;vT=aType;
+  vA=0.82+0.18*sin(p.y*5.0+uTime*2.5);
+}`,
+  fragmentShader:`varying vec3 vC;varying float vA;varying float vT;
+void main(){
+  float d=length(gl_PointCoord-0.5)*2.0;
+  // 蛋糕粒子：较硬边缘 = 固体感
+  float alpha=1.0-smoothstep(0.0,1.0,d);
+  alpha=pow(alpha,0.55);
+  alpha*=vA;
+  if(alpha<0.04)discard;
+  vec3 col=vC;
+  // 火焰粒子额外提亮(由bloom处理)
+  gl_FragColor=vec4(col,alpha);
+}`,
+  blending:THREE.NormalBlending,depthWrite:true,depthTest:true,transparent:true,vertexColors:true
+});
+const cakePts=new THREE.Points(cakeGeo,cakeMat);scene.add(cakePts);
+
+// ==================== 火焰粒子(独立系统，加性混合) ====================
+const flameGeo=new THREE.BufferGeometry();
+const fPosA=new Float32Array(flameDataAll.length*3),fColA=new Float32Array(flameDataAll.length*3),fSizA=new Float32Array(flameDataAll.length);
+flameDataAll.forEach((d,i)=>{
+  fPosA[i*3]=d.x;fPosA[i*3+1]=d.y;fPosA[i*3+2]=d.z;
+  fColA[i*3]=d.r;fColA[i*3+1]=d.g;fColA[i*3+2]=d.b;
+  fSizA[i]=d.s*1.4;
+});
+flameGeo.setAttribute('position',new THREE.BufferAttribute(fPosA,3));
+flameGeo.setAttribute('color',new THREE.BufferAttribute(fColA,3));
+
+const flameMat=new THREE.ShaderMaterial({
+  uniforms:{uTime:{value:0}},
+  vertexShader:`varying vec3 vC;varying float vA;uniform float uTime;
+void main(){
+  vec4 mv=modelViewMatrix*vec4(position,1.0);
+  gl_PointSize=6.0*(300.0/-mv.z);gl_PointSize=clamp(gl_PointSize,0.4,10.0);
+  gl_Position=projectionMatrix*mv;vC=color;vA=0.8+0.2*sin(position.y*10.0+uTime*4.0);
+}`,
+  fragmentShader:`varying vec3 vC;varying float vA;
+void main(){
+  float d=length(gl_PointCoord-0.5)*2.0;
+  float alpha=exp(-d*2.6);alpha*=vA;if(alpha<0.015)discard;
+  vec3 col=vC+vec3(0.2,0.04,0.0)*(1.0-d);
+  gl_FragColor=vec4(col,alpha);
+}`,
+  blending:THREE.AdditiveBlending,depthWrite:false,transparent:true,vertexColors:true
+});
+const flamePtsObj=new THREE.Points(flameGeo,flameMat);scene.add(flamePtsObj);
+
+// ==================== 照片系统 ====================
+const photoGroup=new THREE.Group();scene.add(photoGroup);
+let photoMeshes=[];const MAX_P=26;let pinchTarget=null;
+
+function createPhotoTex(img){
+  const t=new THREE.Texture(img);t.colorSpace=THREE.SRGBColorSpace;t.minFilter=THREE.LinearMipmapLinearFilter;t.magFilter=THREE.LinearFilter;t.generateMipmaps=true;t.needsUpdate=true;return t;
+}
+function photoPlacement(idx){
+  const li=idx%3;
+  const defs=[{r:2.0,h:1.2,y:1.15},{r:1.55,h:1.0,y:2.15},{r:1.02,h:.85,y:3.02}];
+  const def=defs[li];
+  const a=(idx/MAX_P)*PI2+idx*.33;
+  const r=def.r+.2;
+  const y=def.y+(Math.random()-.5)*def.h*.5;
+  const cx=Math.cos(a)*r,cz=Math.sin(a)*r;
+  return{
+    pos:new THREE.Vector3(cx,y,cz),
+    rot:new THREE.Euler(-.1+Math.random()*.25,-a+HPI,-.08+Math.random()*.16),
+    scatP:new THREE.Vector3((Math.random()-.5)*9,Math.random()*7+1.5,(Math.random()-.5)*9),
+    scatR:new THREE.Euler(Math.random()*PI2,Math.random()*PI2,Math.random()*PI2),
+    zoomP:new THREE.Vector3(0,3.2,4.5),zoomR:new THREE.Euler(0,0,0),
+  };
+}
+function addPhoto(img){
+  const idx=photoMeshes.length;if(idx>=MAX_P)return;
+  const asp=img.width/img.height||1.35;const w=.5,h=w/asp;
+  const geo=new THREE.PlaneGeometry(w,h);
+  const mat=new THREE.MeshStandardMaterial({map:createPhotoTex(img),roughness:.48,metalness:.02});
+  const plane=new THREE.Mesh(geo,mat);
+  const fGeo=new THREE.PlaneGeometry(w+.06,h+.06);
+  const fMat=new THREE.MeshStandardMaterial({color:0xffe0b0,roughness:.18,metalness:.62});
+  const frame=new THREE.Mesh(fGeo,fMat);
+  const grp=new THREE.Group();grp.add(frame);grp.add(plane);plane.position.z=.002;
+  const pl=photoPlacement(idx);
+  grp.position.copy(pl.pos);grp.rotation.copy(pl.rot);
+  grp.userData={...pl,isPhoto:true};
+  photoGroup.add(grp);photoMeshes.push(grp);pn.textContent=`已上传: ${photoMeshes.length} 张`;
+}
+function mkPlaceholder(i){
+  const colors=['#ff7043','#ffa040','#f5c860','#ff6090','#e87060','#d0a0f0','#50b0e0','#70c870'];
+  const c=document.createElement('canvas');c.width=180;c.height=240;
+  const ctx=c.getContext('2d');
+  const bg=ctx.createLinearGradient(0,0,180,240);bg.addColorStop(0,colors[i]);bg.addColorStop(1,colors[(i+1)%colors.length]);
+  ctx.fillStyle=bg;ctx.fillRect(0,0,180,240);
+  ctx.fillStyle='rgba(255,255,255,.1)';ctx.beginPath();ctx.arc(90,95,35,0,PI2);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.85)';ctx.font='bold 20px "PingFang SC","Microsoft YaHei",sans-serif';ctx.textAlign='center';ctx.fillText('🎂',90,95);
+  ctx.font='12px "PingFang SC","Microsoft YaHei",sans-serif';ctx.fillText('生日快乐',90,145);
+  ctx.strokeStyle='rgba(255,255,255,.4)';ctx.lineWidth=5;ctx.strokeRect(6,6,168,228);
+  const img=new Image();img.src=c.toDataURL();return img;
+}
+for(let i=0;i<8;i++){const img=mkPlaceholder(i);img.onload=()=>addPhoto(img);}
+
+// ==================== 状态机 ====================
+let curState=STATE.CLOSED,tgtState=STATE.CLOSED;
+let transition=0,targetT=0;
+function setState(st){
+  if(tgtState===st&&Math.abs(targetT-(st===STATE.CLOSED?0:1))<.01)return;
+  tgtState=st;targetT=(st===STATE.CLOSED)?0:1;
+  sb.classList.remove('t-closed','t-scatter','t-zoom');
+  if(st===STATE.CLOSED){sb.textContent='🎂 合拢态';sb.classList.add('t-closed')}
+  else if(st===STATE.SCATTER){sb.textContent='✨ 散开态';sb.classList.add('t-scatter')}
+  else{sb.textContent='🔍 照片放大';sb.classList.add('t-zoom')}
+}
+
+// ==================== 相机 ====================
+let camAz=.55,camEl=.40,camDist=8.5;
+let tgtAz=camAz,tgtEl=camEl,tgtDist=camDist;
+let isDrag=false,prevM={x:0,y:0};
+let handRotD={x:0,y:0},handRotActive=false;
+function updateCam(){
+  tgtAz+=handRotD.x*.035;tgtEl+=handRotD.y*.02;tgtEl=THREE.MathUtils.clamp(tgtEl,-.35,1.15);
+  camAz=THREE.MathUtils.lerp(camAz,tgtAz,.06);camEl=THREE.MathUtils.lerp(camEl,tgtEl,.06);camDist=THREE.MathUtils.lerp(camDist,tgtDist,.06);
+  const cx=Math.cos(camAz)*Math.cos(camEl)*camDist,cy=Math.sin(camEl)*camDist,cz=Math.sin(camAz)*Math.cos(camEl)*camDist;
+  camera.position.set(cx,cy+2.8,cz);camera.lookAt(0,2.8,0);
+}
+
+// ==================== MediaPipe(非阻塞8s超时) ====================
+let handLandmarker=null,mpOk=false,mpFail=false,lastVT=-1,handData=null,detectedG=null,gTimer=0;
+function detectG(lm){
+  if(!lm?.length)return null;const l=lm[0];
+  const tips=[4,8,12,16,20],pips=[3,6,10,14,18],mcps=[2,5,9,13,17];
+  let curled=0,ext=0;
+  for(let i=0;i<5;i++){if(l[tips[i]].y>l[pips[i]].y+.02)curled++;if(l[tips[i]].y<l[mcps[i]].y-.03)ext++;}
+  const dx=l[4].x-l[8].x,dy=l[4].y-l[8].y,pinch=Math.sqrt(dx*dx+dy*dy);
+  if(curled>=4)return'fist';if(pinch<.045)return'pinch';if(ext>=4)return'open';return null;
+}
+function hc(lm){if(!lm?.length)return null;const l=lm[0];let cx=0,cy=0;[0,5,9,13,17].forEach(i=>{cx+=l[i].x;cy+=l[i].y});return{x:cx/5,y:cy/5}}
+async function initMP(){
+  lsub.textContent='尝试摄像头…';
+  try{
+    const{HandLandmarker,FilesetResolver}=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/vision_bundle.mjs');
+    const vp=FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm');
+    const vision=await Promise.race([vp,new Promise((_,r)=>setTimeout(()=>r(new Error('wasm')),8000))]);
+    const mp=HandLandmarker.createFromOptions(vision,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',delegate:'GPU'},runningMode:'VIDEO',numHands:1});
+    handLandmarker=await Promise.race([mp,new Promise((_,r)=>setTimeout(()=>r(new Error('model')),8000))]);
+    const stream=await navigator.mediaDevices.getUserMedia({video:{width:640,height:480,facingMode:'user'}});
+    videoEl.srcObject=stream;await videoEl.play();mpOk=true;gc.textContent='✅ 摄像头就绪';gc.style.color='rgba(150,255,180,.55)';
+  }catch(e){mpFail=true;gc.textContent='📵 鼠标/键盘模式';gc.style.color='rgba(255,180,150,.45)';console.warn('MP:',e.message)}
+  lsub.textContent='';
+}
+setTimeout(initMP,300);
+
+// ==================== 音频 ====================
+let actx=null,mgain=null,mtimer=null,mplaying=false,ubuf=null,msrc=null;
+function initA(){if(!actx){actx=new(window.AudioContext||window.webkitAudioContext)();mgain=actx.createGain();mgain.gain.value=.25;mgain.connect(actx.destination)}}
+function note(f,start,dur,type='triangle'){if(!actx)return;const o=actx.createOscillator(),g=actx.createGain();o.type=type;o.frequency.value=f;g.gain.setValueAtTime(0,start);g.gain.linearRampToValueAtTime(.2,start+.02);g.gain.exponentialRampToValueAtTime(.006,start+dur);o.connect(g);g.connect(mgain);o.start(start);o.stop(start+dur)}
+const mel=[[261.63,.35],[261.63,.35],[293.66,.5],[261.63,.5],[349.23,.5],[329.63,.7],[261.63,.35],[261.63,.35],[293.66,.5],[261.63,.5],[392,.5],[349.23,.7],[261.63,.35],[261.63,.35],[523.25,.5],[440,.5],[349.23,.5],[329.63,.5],[293.66,.7],[466.16,.35],[466.16,.35],[440,.5],[349.23,.5],[392,.5],[349.23,.9]];
+function playMelody(){initA();if(mtimer)return;let t=actx.currentTime+.1;mel.forEach(([f,d])=>{note(f,t,d,'triangle');note(f*2,t,d*.4,'sine');t+=d});const cyc=t-actx.currentTime-.1+1.2;mtimer=setInterval(()=>{if(!mplaying)return;let tt=actx.currentTime+.1;mel.forEach(([f,d])=>{note(f,tt,d,'triangle');note(f*2,tt,d*.4,'sine');tt+=d})},cyc*1000)}
+function stopMelody(){if(mtimer){clearInterval(mtimer);mtimer=null}if(msrc){try{msrc.stop()}catch(e){}}msrc=null}
+function toggleMusic(){initA();if(actx.state==='suspended')actx.resume();if(mplaying){stopMelody();mplaying=false;document.getElementById('b-mt').textContent='▶ 播放';mb.style.display='none'}else{if(ubuf){msrc=actx.createBufferSource();msrc.buffer=ubuf;msrc.loop=true;msrc.connect(mgain);msrc.start()}else playMelody();mplaying=true;document.getElementById('b-mt').textContent='⏸ 暂停';mb.style.display='flex'}}
+
+// ==================== 动画循环 ====================
+const clock=new THREE.Clock();
+function animate(ts){
+  requestAnimationFrame(animate);
+  const dt=Math.min(clock.getDelta(),.12);
+  const elapsed=ts*.001;
+
+  // MP手势
+  if(handLandmarker&&videoEl.readyState>=2&&ts!==lastVT){
+    lastVT=ts;
+    try{
+      const res=handLandmarker.detectForVideo(videoEl,ts);
+      if(res.landmarks?.length){
+        handData=res.landmarks;const g=detectG(res.landmarks);
+        if(g===detectedG){gTimer+=dt}else{detectedG=g;gTimer=0}
+        gi.textContent=g==='fist'?'✊':g==='open'?'🖐':g==='pinch'?'🤏':'✋';
+        gt.textContent=g==='fist'?'握拳':g==='open'?'张开':g==='pinch'?'捏合':'就绪';
+        if(gTimer>.35){
+          if(g==='fist')setState(STATE.CLOSED);
+          else if(g==='open')setState(STATE.SCATTER);
+          else if(g==='pinch'&&curState===STATE.SCATTER&&photoMeshes.length>0){
+            const h=hc(res.landmarks);if(h){let best=null,bd=Infinity;const hx=(h.x-.5)*9,hy=(h.y-.5)*7;photoMeshes.forEach(p=>{const d=Math.hypot(p.position.x-hx,p.position.y-hy-2);if(d<bd){bd=d;best=p}});if(best&&bd<5){pinchTarget=best;setState(STATE.ZOOM)}}
+          }gTimer=0;
+        }
+        if((curState===STATE.SCATTER||tgtState===STATE.SCATTER)&&g==='open'){const h=hc(res.landmarks);if(h){handRotActive=true;handRotD.x=(h.x-.5)*1.8;handRotD.y=(h.y-.5)*1.8}}else{handRotActive=false;handRotD.x*=.85;handRotD.y*=.85}
+      }else{handData=null;handRotD.x*=.85;handRotD.y*=.85}
+    }catch(e){}
+  }
+
+  // 过渡
+  const spd=2.5;transition=THREE.MathUtils.lerp(transition,targetT,1-Math.exp(-spd*dt));
+  if(Math.abs(transition-targetT)<.0008){transition=targetT;curState=tgtState}
+  const t=transition,easeT=t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+  cakeMat.uniforms.uTransition.value=easeT;cakeMat.uniforms.uTime.value=elapsed;
+
+  // 火焰动画
+  const fpa=flamePtsObj.geometry.attributes.position.array;
+  for(let i=0;i<flameDataAll.length;i++){
+    const fd=flameDataAll[i],si=scatPos[fd.origIdx];
+    // 基础插值位置
+    let bx=THREE.MathUtils.lerp(fd.x,si.x,easeT);
+    let by=THREE.MathUtils.lerp(fd.y,si.y,easeT);
+    let bz=THREE.MathUtils.lerp(fd.z,si.z,easeT);
+    // 合拢态火焰闪烁
+    if(t<.95){const fa=(1-easeT)*.07;by+=Math.sin(elapsed*fd.spd+fd.phase)*fa;bx+=Math.sin(elapsed*fd.spd*1.6+fd.phase)*fa*.5;bz+=Math.cos(elapsed*fd.spd*1.3+fd.phase)*fa*.5}
+    fpa[i*3]=bx;fpa[i*3+1]=by;fpa[i*3+2]=bz;
+  }
+  flamePtsObj.geometry.attributes.position.needsUpdate=true;flameMat.uniforms.uTime.value=elapsed;
+
+  // 照片
+  photoMeshes.forEach(p=>{
+    const ud=p.userData;let fp,tp,fr,tr;
+    if(tgtState===STATE.ZOOM&&pinchTarget===p){fp=ud.scatP;tp=ud.zoomP;fr=ud.scatR;tr=ud.zoomR;const s=THREE.MathUtils.lerp(1,3.5,easeT);p.scale.lerp(new THREE.Vector3(s,s,s),.1)}
+    else{fp=tgtState===STATE.CLOSED?ud.scatP:ud.pos;tp=tgtState===STATE.CLOSED?ud.pos:ud.scatP;fr=tgtState===STATE.CLOSED?ud.scatR:ud.rot;tr=tgtState===STATE.CLOSED?ud.rot:ud.scatR;if(tgtState!==STATE.ZOOM)p.scale.lerp(new THREE.Vector3(1,1,1),.1)}
+    p.position.lerpVectors(fp,tp,easeT);p.rotation.x=THREE.MathUtils.lerp(fr.x,tr.x,easeT);p.rotation.y=THREE.MathUtils.lerp(fr.y,tr.y,easeT);p.rotation.z=THREE.MathUtils.lerp(fr.z,tr.z,easeT);
+  });
+
+  // 相机
+  if(curState===STATE.CLOSED&&!handRotActive)tgtAz+=dt*.18;
+  updateCam();stars.rotation.y+=dt*.02;
+  lTop.intensity=18+Math.sin(elapsed*5)*3+Math.sin(elapsed*12)*2;
+  composer.render();
+}
+
+// === 事件 ===
+renderer.domElement.addEventListener('pointerdown',e=>{isDrag=true;prevM.x=e.clientX;prevM.y=e.clientY});
+window.addEventListener('pointermove',e=>{if(!isDrag)return;tgtAz-=(e.clientX-prevM.x)*.005;tgtEl+=(e.clientY-prevM.y)*.005;tgtEl=THREE.MathUtils.clamp(tgtEl,-.5,1.3);prevM.x=e.clientX;prevM.y=e.clientY});
+window.addEventListener('pointerup',()=>{isDrag=false});
+renderer.domElement.addEventListener('wheel',e=>{tgtDist+=e.deltaY*.01;tgtDist=THREE.MathUtils.clamp(tgtDist,3.5,16)});
+window.addEventListener('keydown',e=>{switch(e.key){case'1':setState(STATE.CLOSED);break;case'2':setState(STATE.SCATTER);break;case'3':if(photoMeshes.length){pinchTarget=photoMeshes[Math.floor(Math.random()*photoMeshes.length)];setState(STATE.ZOOM)}break;case'm':case'M':toggleMusic();break;case'Escape':setState(STATE.SCATTER);break}});
+document.getElementById('b-pu').addEventListener('click',()=>document.getElementById('p-in').click());
+document.getElementById('p-in').addEventListener('change',e=>{Array.from(e.target.files).forEach(f=>{if(photoMeshes.length>=MAX_P)return;const r=new FileReader();r.onload=ev=>{const img=new Image();img.onload=()=>addPhoto(img);img.src=ev.target.result};r.readAsDataURL(f)});e.target.value=''});
+document.getElementById('b-pc').addEventListener('click',()=>{while(photoMeshes.length){const p=photoMeshes.pop();photoGroup.remove(p);p.traverse(c=>{if(c.geometry)c.geometry.dispose();if(c.material)c.material.dispose()})}pinchTarget=null;if(tgtState===STATE.ZOOM)setState(STATE.SCATTER);pn.textContent='已上传: 0 张'});
+document.getElementById('b-mt').addEventListener('click',toggleMusic);
+document.getElementById('b-mu').addEventListener('click',()=>document.getElementById('m-in').click());
+document.getElementById('m-in').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=async ev=>{initA();try{ubuf=await actx.decodeAudioData(ev.target.result);stopMelody();if(mplaying){msrc=actx.createBufferSource();msrc.buffer=ubuf;msrc.loop=true;msrc.connect(mgain);msrc.start()}}catch(err){}};r.readAsArrayBuffer(f);e.target.value=''});
+volS.addEventListener('input',e=>{if(mgain)mgain.gain.value=e.target.value/100});
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);composer.setSize(innerWidth,innerHeight)});
+
+// === 启动 ===
+loader.classList.add('done');setTimeout(()=>loader.style.display='none',700);
+requestAnimationFrame(animate);
+console.log('🎂 粒子蛋糕就绪 | 总粒子:',TOTAL,'| 火焰粒子:',flameDataAll.length,'| 照片:',photoMeshes.length);
+console.log('  手势: ✊握拳=合拢 | 🖐五指=散开 | 🤏捏合=放大照片 | 🔄旋转手=转视角');
+console.log('  键盘: 1=合拢 2=散开 3=放大 M=音乐');
+</script>
+</body>
+</html>
